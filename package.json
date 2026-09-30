@@ -15,6 +15,7 @@
     "admin:promote": "node scripts/promote-admin.mjs",
     "db:seed": "node scripts/seed-catalog.mjs",
     "db:seed:catalog": "node scripts/seed-catalog.mjs --catalog-only",
+    "db:seed:women": "node scripts/seed-womens-catalog.mjs",
     "test:integration": "node --test test/commerce.integration.mjs",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
