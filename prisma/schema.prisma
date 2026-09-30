@@ -1,0 +1,187 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CLIENT
+  ADMIN
+}
+enum OperationType {
+  SALE
+  RENTAL
+}
+enum OrderStatus {
+  NEW
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+enum TransactionStatus {
+  DRAFT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+enum WeddingPackageStatus {
+  REQUESTED
+  IN_PROGRESS
+  CLOSED
+}
+model Profile {
+  id         String @id @default(uuid()) @db.Uuid
+  authUserId String @unique @db.Uuid
+  name       String
+  email      String
+  phone      String?
+  document   String?
+  role       Role @default(CLIENT)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  orders     Order[]
+  transactions Transaction[]
+  weddingPackages WeddingPackage[]
+}
+model Product {
+  id               String @id @default(uuid()) @db.Uuid
+  name             String
+  category         String
+  collection       String?
+  fabric           String?
+  color            String?
+  line             String?
+  photoUrl         String?
+  rentalPriceCents  Int
+  salePriceCents    Int
+  active           Boolean @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  variants         Variant[]
+  weddingPackages WeddingPackage[]
+}
+
+model WeddingPackage {
+  id               String @id @default(uuid()) @db.Uuid
+  profileId        String? @db.Uuid
+  baseProductId    String? @db.Uuid
+  coupleNames      String
+  eventDate        DateTime? @db.Date
+  expectedMembers  Int
+  contactName      String
+  contactEmail     String
+  contactPhone     String
+  notes            String @default("")
+  status           WeddingPackageStatus @default(REQUESTED)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+  profile          Profile? @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  baseProduct      Product? @relation(fields: [baseProductId], references: [id], onDelete: Restrict)
+  participants     WeddingPackageParticipant[]
+  @@index([status, createdAt])
+  @@index([profileId, createdAt])
+}
+
+model WeddingPackageParticipant {
+  id          String @id @default(uuid()) @db.Uuid
+  packageId   String @db.Uuid
+  name        String
+  role        String
+  size        String
+  notes       String @default("")
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  package     WeddingPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  @@index([packageId, createdAt])
+}
+model Variant {
+  id        String @id @default(uuid()) @db.Uuid
+  productId String @db.Uuid
+  size      String
+  quantity  Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orders    Order[]
+  transactions Transaction[]
+  @@unique([productId, size])
+}
+model Order {
+  id                  String @id @default(uuid()) @db.Uuid
+  protocol            String @unique
+  profileId           String @db.Uuid
+  variantId           String @db.Uuid
+  type                OperationType
+  status              OrderStatus @default(NEW)
+  startDate           DateTime? @db.Date
+  endDate             DateTime? @db.Date
+  quotedPriceCents     Int
+  customerName        String
+  customerEmail       String
+  customerPhone       String?
+  customerDocument    String?
+  notes               String @default("")
+  rejectionReason     String?
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  profile             Profile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  variant             Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  transaction         Transaction?
+  history             OrderHistory[]
+  @@index([profileId, createdAt])
+  @@index([status, createdAt])
+}
+model OrderHistory {
+  id        String @id @default(uuid()) @db.Uuid
+  orderId   String @db.Uuid
+  status    OrderStatus
+  note      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  @@index([orderId, createdAt])
+}
+model Transaction {
+  id           String @id @default(uuid()) @db.Uuid
+  orderId      String? @unique @db.Uuid
+  profileId    String @db.Uuid
+  variantId    String @db.Uuid
+  type         OperationType
+  status       TransactionStatus @default(DRAFT)
+  priceCents   Int
+  startDate    DateTime? @db.Date
+  endDate      DateTime? @db.Date
+  confirmedAt  DateTime? @db.Timestamptz(3)
+  pickedUpAt   DateTime? @db.Timestamptz(3)
+  completedAt  DateTime? @db.Timestamptz(3)
+  cancelledAt  DateTime? @db.Timestamptz(3)
+  damageNotes  String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  profile      Profile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  variant      Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  order        Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  payment      Payment?
+  @@index([variantId, status, startDate, endDate])
+  @@index([profileId, createdAt])
+}
+model Payment {
+  id            String @id @default(uuid()) @db.Uuid
+  transactionId String @unique @db.Uuid
+  status        PaymentStatus @default(PENDING)
+  amountCents   Int
+  simulated     Boolean @default(true)
+  paidAt        DateTime? @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+}
+model RevokedToken {
+  digest    String @id
+  expiresAt DateTime @db.Timestamptz(3)
+}

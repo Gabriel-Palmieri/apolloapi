@@ -1,0 +1,66 @@
+[
+  {
+    "id": "P001",
+    "modelo_nome": "Paletó Slim Fit Azul Marinho",
+    "categoria": "paletó",
+    "cor": "azul-marinho",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "Um clássico atemporal: o azul-marinho combina com qualquer tom de pele e o corte slim alonga a silhueta, sendo a escolha certeira para o dia a dia corporativo."
+  },
+  {
+    "id": "P004",
+    "modelo_nome": "Paletó Clássico Cinza Chumbo",
+    "categoria": "paletó",
+    "cor": "cinza-chumbo",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1617127365659-c47fa864d8bc?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "O cinza-chumbo tem a versatilidade de transitar entre o formal e o descontraído, e o corte clássico dá uma estrutura elegante aos ombros."
+  },
+  {
+    "id": "P006",
+    "modelo_nome": "Paletó Cerimônia Preto",
+    "categoria": "paletó",
+    "cor": "preto",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "Para ocasiões que pedem sofisticação máxima, o preto de cerimônia é a escolha mais segura e elegante que existe na alfaiataria."
+  },
+  {
+    "id": "B001",
+    "modelo_nome": "Blazer Casual Verde Oliva",
+    "categoria": "blazer",
+    "cor": "verde-oliva",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1598808503746-f34c53b9323e?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "O verde-oliva traz um toque contemporâneo e descontraído sem abrir mão do bom gosto, ideal para quem quer fugir do óbvio."
+  },
+  {
+    "id": "B003",
+    "modelo_nome": "Blazer Xadrez Marrom",
+    "categoria": "blazer",
+    "cor": "marrom",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1593032465175-481ac7f401a0?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "A estampa xadrez em tons de marrom adiciona personalidade ao look e mostra que é possível ousar sem perder a elegância."
+  },
+  {
+    "id": "B004",
+    "modelo_nome": "Blazer Linho Bege",
+    "categoria": "blazer",
+    "cor": "bege",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1585487000160-6ebcfceb0d03?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "O linho bege é leve, respirável e traz uma sofisticação natural, perfeito para climas quentes sem parecer casual demais."
+  },
+  {
+    "id": "C001",
+    "modelo_nome": "Camisa Social Branca Slim",
+    "categoria": "camisa social",
+    "cor": "branco",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1620012253295-c15cc3e65df4?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "Nenhuma peça é mais versátil que uma camisa branca bem cortada — combina com absolutamente tudo e nunca sai de moda."
+  },
+  {
+    "id": "C002",
+    "modelo_nome": "Camisa Social Azul Clara",
+    "categoria": "camisa social",
+    "cor": "azul-claro",
+    "url_foto_da_peca": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?q=80&w=800&auto=format&fit=crop",
+    "justificativa": "O azul claro suaviza o visual e ilumina o rosto, sendo uma alternativa refrescante ao branco tradicional."
+  }
+]

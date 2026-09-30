@@ -1,0 +1,23 @@
+Coloque aqui as fotos reais das peças do estoque, com os mesmos nomes de
+arquivo referenciados em backend/src/data/estoque.json, por exemplo:
+
+  paleto-slim-azul-marinho-p.jpg
+  paleto-slim-azul-marinho-m.jpg
+  paleto-slim-azul-marinho-g.jpg
+  paleto-classico-cinza-m.jpg
+  paleto-classico-cinza-gg.jpg
+  paleto-cerimonia-preto-g.jpg
+  blazer-casual-oliva-p.jpg
+  blazer-casual-oliva-m.jpg
+  blazer-xadrez-marrom-g.jpg
+  blazer-linho-bege-m.jpg
+  camisa-social-branca-m.jpg
+  camisa-social-azul-g.jpg
+
+Recomendações para as fotos:
+- Peça sozinha (flat-lay ou manequim invisível), fundo liso e claro
+- Bem enquadrada, sem cortar a peça
+- Boa iluminação, sem sombras fortes
+
+Sem essas imagens, o backend vai retornar erro ao tentar acessar
+BACKEND_BASE_URL + url_foto_da_peca durante a chamada ao Fal.ai.

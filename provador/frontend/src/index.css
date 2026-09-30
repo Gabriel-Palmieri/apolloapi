@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-charcoal: #1c1b1a;
+  --color-navy: #232c39;
+  --color-navy-light: #2e3948;
+  --color-ivory: #ede6d8;
+  --color-ivory-dim: #c9c2b4;
+  --color-brass: #b98d4f;
+  --color-brass-dim: #7c6640;
+  --color-thread: #a24b3f;
+  --font-display: "Fraunces", serif;
+  --font-sans: "Public Sans", sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-charcoal);
+  color: var(--color-ivory);
+  font-family: var(--font-sans);
+}
+
+/* textura sutil de linho, só pra tirar a chapadura do fundo sólido */
+.textura-tecido {
+  background-image: radial-gradient(circle at 1px 1px, rgba(237, 230, 216, 0.035) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+.campo-input {
+  background-color: var(--color-navy);
+  border: 1px solid var(--color-brass-dim);
+  border-radius: 2px;
+  padding: 0.6rem 0.75rem;
+  color: var(--color-ivory);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  outline: none;
+}
+.campo-input:focus {
+  border-color: var(--color-brass);
+}
