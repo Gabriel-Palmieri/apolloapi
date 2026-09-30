@@ -17,3 +17,5 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: FAL_KEY
+        sync: false
