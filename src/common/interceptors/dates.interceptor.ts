@@ -8,7 +8,7 @@ import { map } from 'rxjs';
 import type { Response } from 'express';
 export function serializeDates(value: unknown, key = ''): unknown {
   if (value instanceof Date)
-    return ['startDate', 'endDate'].includes(key)
+    return ['startDate', 'endDate', 'eventDate'].includes(key)
       ? value.toISOString().slice(0, 10)
       : value.toISOString();
   if (Array.isArray(value)) return value.map((item) => serializeDates(item));

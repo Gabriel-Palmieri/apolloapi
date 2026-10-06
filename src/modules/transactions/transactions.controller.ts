@@ -1,3 +1,4 @@
+import { CalendarDto, TransactionPageDto } from '../../common/dto/list-page.dto.js';
 import {
   Body,
   Controller,
@@ -36,6 +37,18 @@ export class TransactionsController {
   readConflicts() {
     return this.service.readConflicts();
   }
+
+  @Get('page')
+  readPage(@CurrentUser() user: Profile, @Query() query: TransactionPageDto) {
+    return this.service.readPage(user, query);
+  }
+  @Admin()
+  @Get('dashboard')
+  readDashboard() { return this.service.readDashboard(); }
+
+  @Admin()
+  @Get('calendar')
+  readCalendar(@Query() query: CalendarDto) { return this.service.readCalendar(query); }
 
   @Get(':id')
   readOne(

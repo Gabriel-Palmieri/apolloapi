@@ -1,3 +1,5 @@
+import { ProductPageDto } from '../../common/dto/list-page.dto.js';
+import { pageWindow } from '../../common/utils/page-window.js';
 import {
   ConflictException,
   Injectable,
@@ -26,6 +28,35 @@ export class ProductsService {
     });
   }
 
+  readPage(query: ProductPageDto, publicOnly = false) {
+    return this.prisma.$transaction(async (tx) => {
+      const showcases = {
+        noivo: { category: 'Terno', collection: { in: ['Noivos Premium', 'Black Tie'] } },
+        padrinhos: { category: 'Terno', line: 'Padronizada' },
+        convidado: { category: 'Terno', collection: 'Clássica' },
+        acessorios: { category: { in: ['Sapato', 'Gravata', 'Camisa', 'Acessório'] } },
+      };
+      const showcase = showcases[query.showcase as keyof typeof showcases];
+      const where = {
+        ...(publicOnly ? { active: true } : query.state && query.state !== 'all' ? { active: query.state === 'active' } : {}),
+        AND: [ ...(query.category ? [{ category: query.category }] : []), ...(showcase ? [showcase] : []), ...(query.q?.trim() ? query.q.trim().split(/\s+/).map(term => ({ OR: [
+          { name: { contains: term, mode: 'insensitive' as const } },
+          { color: { contains: term, mode: 'insensitive' as const } },
+          { category: { contains: term, mode: 'insensitive' as const } },
+        ] })) : []) ],
+      };
+      const total = await tx.product.count({ where });
+      const meta = pageWindow(total, query);
+      const items = await tx.product.findMany({ where, include: { variants: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (meta.page - 1) * meta.limit, take: meta.limit });
+      if (publicOnly) return { ...meta, items };
+      const counts = await tx.product.groupBy({ by: ['active'], _count: { _all: true } });
+      const pieces = await tx.variant.aggregate({ _sum: { quantity: true } });
+      const active = counts.find(row => row.active)?._count._all ?? 0;
+      const inactive = counts.find(row => !row.active)?._count._all ?? 0;
+      return { ...meta, items, summary: { modelos: active + inactive, ativos: active, inativos: inactive, pecas: pieces._sum.quantity ?? 0 } };
+    }, { isolationLevel: 'RepeatableRead' });
+  }
   async readOne(id: string, includeInactive = false) {
     const product = await this.prisma.product.findFirst({
       where: { id, ...(includeInactive ? {} : { active: true }) },

@@ -1,7 +1,9 @@
+import { OrderPageDto } from '../../common/dto/list-page.dto.js';
 import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Post,
@@ -29,6 +31,15 @@ export class OrdersController {
     return this.service.read(user, query);
   }
 
+  @Get('summary')
+  readSummary(@CurrentUser() user: Profile) {
+    return this.service.readSummary(user);
+  }
+
+  @Get('page')
+  readPage(@CurrentUser() user: Profile, @Query() query: OrderPageDto) {
+    return this.service.readPage(user, query);
+  }
   @Get(':id')
   readOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -38,8 +49,8 @@ export class OrdersController {
   }
 
   @Post()
-  create(@CurrentUser() user: Profile, @Body() dto: CreateOrderDto) {
-    return this.service.create(user, dto);
+  create(@CurrentUser() user: Profile, @Body() dto: CreateOrderDto, @Headers('idempotency-key') key?: string) {
+    return this.service.create(user, dto, key);
   }
 
   @Admin()

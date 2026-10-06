@@ -28,7 +28,8 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "test:contracts": "node --test test/flow-contracts.test.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

@@ -1,3 +1,4 @@
+import { ProductPageDto } from '../../common/dto/list-page.dto.js';
 import {
   Body,
   Controller,
@@ -35,6 +36,17 @@ export class ProductsController {
     return this.service.read(query, true);
   }
 
+  @Admin()
+  @Get('admin/page')
+  readPage(@Query() query: ProductPageDto) {
+    return this.service.readPage(query);
+  }
+  @Public()
+  @Get('page')
+  readPublicPage(@Query() query: ProductPageDto) { return this.service.readPage(query, true); }
+  @Admin()
+  @Get('admin/:id')
+  readAdminOne(@Param('id', ParseUUIDPipe) id: string) { return this.service.readOne(id, true); }
   @Public()
   @Get(':id')
   readOne(@Param('id', ParseUUIDPipe) id: string) {
