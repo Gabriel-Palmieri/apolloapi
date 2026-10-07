@@ -1,3 +1,4 @@
+
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Admin, Public } from '../../common/decorators/access.decorator.js';
@@ -17,6 +18,11 @@ export class WeddingPackagesController {
     return this.service.create(dto);
   }
 
+  @Admin()
+  @Get('page')
+  readPage(@Query() query: PageDto) {
+    return this.service.readPage(query);
+  }
   @Admin()
   @Get()
   read(@Query() query: PageDto) {

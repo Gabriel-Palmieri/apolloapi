@@ -36,7 +36,7 @@ Habilite autenticação por e-mail/senha e confirmação de e-mail. Configure no
 - Redirects permitidos: `FRONTEND_URL/auth/callback` e `FRONTEND_URL/auth/reset-password`.
 - Configure envio de e-mails/SMTP se necessário para testar usuários fora das restrições do provedor de e-mail padrão.
 
-O frontend ainda não foi integrado. Ele deve encaminhar os tokens recebidos no callback de confirmação/recuperação aos endpoints NestJS; não basta abrir a rota sem tratar o callback.
+O frontend em ../apolorigor está integrado aos endpoints de autenticação e trata os callbacks de confirmação/recuperação. A entrega de e-mails e os redirects do ambiente ainda precisam de homologação real.
 
 Fluxo:
 
@@ -152,7 +152,7 @@ O protocolo é `AR-` seguido de 16 caracteres hexadecimais; é uma referência l
 - Transações serializáveis com repetição limitada tratam concorrência. Após conflitos persistentes, a API retorna 409.
 - Tabelas comerciais têm RLS sem políticas de acesso direto; o servidor usa a conexão PostgreSQL e verifica dono/papel em cada rota. Não expor a conexão do banco ao frontend.
 
-Fora desta versão: pacotes, portal do casamento, ajustes de costura, sugestões de tamanho, pagamentos reais/parciais, devolução de venda após entrega, notificações e dashboard avançado.
+Fora desta versão: contratação e acompanhamento individual de pacotes, portal do casamento conectado, ajustes de costura, sugestões de tamanho, pagamentos reais/parciais, devolução de venda após entrega, notificações e dashboard avançado. O recebimento de solicitações de pacotes e participantes já está disponível.
 
 ## Validação
 
@@ -173,8 +173,52 @@ Integração PostgreSQL:
 
 A integração Auth real depende da chave publicável e das configurações de e-mail/redirect do projeto. Testes HTTP usam o Auth substituído; não comprovam entrega de e-mail.
 
-O frontend existente permanece com os mocks nesta etapa e precisa ser integrado a estes contratos.
+O frontend usa esta API em produção; respostas HTTP substitutas ficam restritas aos testes automatizados. A homologação com banco e serviços reais continua pendente.
 
 ## Dependências
 
 A instalação auditada apontou avisos altos em dependências transitivas do Prisma CLI (`deepmerge-ts` e `mysql2`). Não foi aplicado `npm audit fix --force`, pois a solução sugerida fazia downgrade incompatível para Prisma 6. Esses avisos não foram removidos; acompanhar atualização compatível do Prisma. O driver utilizado pela aplicação é PostgreSQL.
+
+## Contratos corrigidos em 06/10/2026
+
+- Fotos de produto: URLs HTTPS ou imagens locais em /produtos/, incluindo subpastas de nomes simples (como feminino). Caminhos de travessia, esquemas incompatíveis e arquivos locais fora desse diretório são recusados.
+- eventDate de solicitações de casamento: omitir para data a definir; quando informado, usar YYYY-MM-DD válido, hoje ou depois no dia comercial de São Paulo. null explícito, timestamps e dias inexistentes são recusados. Criação e listagem retornam eventDate em YYYY-MM-DD.
+- Após npm run build, execute npm run test:contracts. Os testes usam o runner nativo do Node, verificam DTOs e HTTP do Nest com persistência substituída e não acessam banco ou serviços externos.
+
+### Limpeza de campos opcionais do catálogo
+
+Em PATCH /products/:id, collection, fabric, color, line e photoUrl aceitam null para remover o valor salvo. Omitir um campo preserva seu valor. Strings vazias continuam inválidas; os campos obrigatórios continuam recusando null. Na criação, os opcionais devem ser omitidos quando não preenchidos. Esta mudança deve ser implantada junto do frontend que envia null ao limpar o formulário.
+
+O comando npm run test:contracts, após npm run build, verifica estes contratos sem usar banco real. Os testes de DTO/HTTP com dependências substituídas não comprovam a integração PostgreSQL.
+### Relatório de conflitos — terceira etapa
+
+GET /transactions/conflicts carrega as locações confirmadas com a quantidade da variante em uma única chamada findMany. As reservas são agrupadas por variante e avaliadas pela mesma função occupancy usada na disponibilidade. O relatório não faz mais uma busca de variante e de reservas para cada operação. Pagamentos e demais dados do produto não são carregados para esse cálculo.
+
+Os testes de contrato verificam equivalência com StockService, limites inclusivos, atrasos, reservas sem retirada, capacidade e variantes independentes. Um cenário controlado com 1.200 reservas verifica uma única chamada de listagem, e falhas de leitura continuam propagadas como erro. Isso não mede quantidade de SQLs internos do Prisma nem latência de banco real. O cálculo agora indexa os intervalos sobrecarregados por variante e consulta cada reserva por busca binária. Medições com volume real continuam pendentes.
+
+### Paginação da gestão — quarta etapa
+
+Novos endpoints preservam os arrays retornados pelas rotas anteriores:
+
+| Endpoint | Acesso | Filtros |
+| --- | --- | --- |
+| GET /products/admin/page | Admin | page, limit, q (nome/cor/categoria), state (all/active/inactive) |
+| GET /orders/page | Autenticado; cliente limitado aos próprios pedidos | page, limit, status (NEW/UNDER_REVIEW/APPROVED/REJECTED) |
+| GET /transactions/page | Autenticado; cliente limitado às próprias operações | page, limit, q (modelo/cliente) |
+| GET /wedding-packages/page | Admin | page, limit |
+| GET /orders/summary | Autenticado; cliente limitado aos próprios pedidos | Sem filtros; contagens por status |
+
+Rotas paginadas retornam items, total, page, pages e limit. Catálogo e pedidos incluem summary global, independente do filtro da página. Page e limit são inteiros positivos; limit vai até 100 (padrão 20), busca até 120 caracteres. Página além do fim é ajustada à última existente; lista vazia retorna página 1 de 1 e total 0. A ordenação por createdAt e id evita ambiguidade de datas iguais. Contagens e itens usam uma transação RepeatableRead. Pedidos/operacões mantêm profileId no escopo do cliente, inclusive contagens.
+
+Implantar estes endpoints antes do frontend paginado. npm run test:contracts verifica rotas, validação e AuthGuard reais, com autenticação e persistência substituídas. Isso não comprova isolamento ou desempenho do PostgreSQL real. O frontend atualizado usa agregações específicas para dashboard/agenda e páginas para seletores. As rotas anteriores permanecem por compatibilidade; medições com volume real continuam pendentes.
+
+
+## Paginação, resumos e repetição de pedidos (07/10/2026)
+
+- Catálogo público: GET /products/page aceita category, showcase e q; sempre restringe active=true, mesmo com state=inactive. GET /products/:id resolve o detalhe público e GET /products/admin/:id permite o detalhe de gestão.
+- GET /profiles/page é exclusivo da equipe e retorna páginas de id, name e email. GET /orders/page aceita protocol, mantendo o escopo da conta. GET /transactions/page aceita type, status, day e sort=date, além de busca e paginação.
+- GET /transactions/dashboard e GET /transactions/calendar são exclusivos da equipe. O primeiro agrega os totais e limita próximas movimentações a cinco; o segundo agrega contagens por dia no PostgreSQL e rejeita janelas acima de 42 dias. Detalhes da agenda são paginados separadamente.
+- Conflitos usam uma leitura de reservas, agrupamento por variante e índice de intervalos sobrecarregados. A comparação com as regras de disponibilidade continua coberta por testes de contrato.
+- POST /orders aceita Idempotency-Key como UUID v4. A combinação profileId + chave é única; a mesma chave e corpo recuperam o pedido original, enquanto mudanças no corpo recebem 409. O replay acontece antes de revalidar catálogo/datas. Clientes legados sem cabeçalho continuam aceitos, sem a garantia de idempotência.
+
+A migration 20261006000000_order_idempotency apenas adiciona colunas opcionais e índice único. NÃO foi aplicada nesta etapa; banco real, seed e deploy foram expressamente adiados. Antes da futura publicação do backend, aplicar a migration conforme o procedimento existente. Os testes locais usam persistência substituída; concorrência e SQL no PostgreSQL real ainda dependem da homologação adiada.

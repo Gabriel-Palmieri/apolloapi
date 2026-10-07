@@ -118,6 +118,8 @@ model Variant {
 model Order {
   id                  String @id @default(uuid()) @db.Uuid
   protocol            String @unique
+  idempotencyKey      String? @db.Uuid
+  requestHash         String?
   profileId           String @db.Uuid
   variantId           String @db.Uuid
   type                OperationType
@@ -136,6 +138,7 @@ model Order {
   variant             Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
   transaction         Transaction?
   history             OrderHistory[]
+  @@unique([profileId, idempotencyKey])
   @@index([profileId, createdAt])
   @@index([status, createdAt])
 }

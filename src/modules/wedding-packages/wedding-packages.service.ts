@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { pageWindow } from '../../common/utils/page-window.js';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateWeddingPackageDto } from './dto/create-wedding-package.dto.js';
 import { PageDto } from '../../common/dto/page.dto.js';
 import { pagination } from '../../common/utils/pagination.js';
+import { parseDay, today } from '../../common/utils/dates.js';
 
 const include = {
   participants: { orderBy: { createdAt: 'asc' as const } },
@@ -14,6 +16,9 @@ export class WeddingPackagesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateWeddingPackageDto) {
+    const eventDate = dto.eventDate === undefined ? null : parseDay(dto.eventDate);
+    if (eventDate && eventDate < today())
+      throw new BadRequestException('A data do evento deve ser hoje ou depois.');
     if (dto.baseProductId) {
       const product = await this.prisma.product.findFirst({
         where: { id: dto.baseProductId, active: true },
@@ -24,7 +29,7 @@ export class WeddingPackagesService {
     return this.prisma.weddingPackage.create({
       data: {
         coupleNames: dto.coupleNames.trim(),
-        eventDate: dto.eventDate ? new Date(`${dto.eventDate}T00:00:00.000Z`) : null,
+        eventDate,
         expectedMembers: dto.expectedMembers,
         baseProductId: dto.baseProductId,
         contactName: dto.contactName.trim(),
@@ -42,6 +47,15 @@ export class WeddingPackagesService {
     });
   }
 
+  readPage(query: PageDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const total = await tx.weddingPackage.count();
+      const meta = pageWindow(total, query);
+      const items = await tx.weddingPackage.findMany({ include,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (meta.page - 1) * meta.limit, take: meta.limit });
+      return { ...meta, items };
+    }, { isolationLevel: 'RepeatableRead' });
+  }
   read(query: PageDto) {
     return this.prisma.weddingPackage.findMany({
       include,

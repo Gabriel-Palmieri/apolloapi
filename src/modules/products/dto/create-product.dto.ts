@@ -5,7 +5,6 @@ import {
   IsArray,
   IsInt,
   IsString,
-  IsUrl,
   Length,
   Matches,
   Max,
@@ -14,6 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { VariantDto } from './variant.dto.js';
+import { IsProductPhotoUrl } from '../../../common/validators/product-photo-url.js';
 
 export class CreateProductDto {
   @IsString()
@@ -46,7 +46,7 @@ export class CreateProductDto {
   line?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @IsProductPhotoUrl()
   photoUrl?: string;
 
   @IsInt()
