@@ -167,6 +167,7 @@ test('paged HTTP lists preserve filters, global totals, ordering and access boun
   const { UnauthorizedException } = await import('@nestjs/common');
   const { AuthGuard } = await import('../dist/common/guards/auth.guard.js');
   const { AuthService } = await import('../dist/modules/auth/auth.service.js');
+  const { ProfilesController } = await import('../dist/modules/auth/profiles.controller.js');
   const { ProductsController } = await import('../dist/modules/products/products.controller.js');
   const { ProductsService } = await import('../dist/modules/products/products.service.js');
   const { OrdersController } = await import('../dist/modules/orders/orders.controller.js');
@@ -213,7 +214,7 @@ test('paged HTTP lists preserve filters, global totals, ordering and access boun
   let snapshots=0;
   const prisma={...db,$transaction:async(fn,options)=>{assert.equal(options.isolationLevel,'RepeatableRead');snapshots++;return fn(db);}};
   const module=await Test.createTestingModule({
-    controllers:[ProductsController,OrdersController,TransactionsController,WeddingPackagesController],
+    controllers:[ProductsController,OrdersController,TransactionsController,WeddingPackagesController,ProfilesController],
     providers:[ProductsService,OrdersService,TransactionsService,WeddingPackagesService,
       {provide:PrismaService,useValue:prisma},{provide:StockService,useValue:{}},
       {provide:AuthService,useValue:{authenticate:async token=>{
@@ -227,9 +228,9 @@ test('paged HTTP lists preserve filters, global totals, ordering and access boun
   await app.init();
   t.after(()=>app.close());
   const get=(path,role='admin')=>request(app.getHttpServer()).get(path).auth(role,{type:'bearer'});
-  for (const path of ['/products/admin/page','/orders/page','/transactions/page','/wedding-packages/page','/orders/summary'])
+  for (const path of ['/products/admin/page','/orders/page','/transactions/page','/wedding-packages/page','/orders/summary','/transactions/dashboard','/transactions/calendar','/profiles/page'])
     await request(app.getHttpServer()).get(path).expect(401);
-  for (const path of ['/products/admin/page','/wedding-packages/page']) await get(path,'client').expect(403);
+  for (const path of ['/products/admin/page','/wedding-packages/page','/transactions/dashboard','/transactions/calendar','/profiles/page']) await get(path,'client').expect(403);
   const products=await get('/products/admin/page?page=2&limit=20').expect(200);
   assert.equal(products.body.items.length,20);
   assert.equal(products.body.items[0].id,'024');
@@ -268,6 +269,12 @@ test('paged HTTP lists preserve filters, global totals, ordering and access boun
   for (const query of ['page=0','page=-1','page=1.5','limit=101','limit=0','state=invalid','q='+('x'.repeat(121)),'unknown=value'])
     await get('/products/admin/page?'+query).expect(400);
   await get('/orders/page?status=PAID').expect(400);
+  await get('/transactions/page?type=UNKNOWN').expect(400);
+  await get('/transactions/page?status=APPROVED').expect(400);
+  await get('/transactions/calendar?start=2026-10-01&end=2026-11-12').expect(400);
+  await get('/transactions/calendar?start=2026-10-02&end=2026-10-01').expect(400);
+  await get('/transactions/calendar?start=2026-02-30&end=2026-03-01').expect(400);
+  await request(app.getHttpServer()).post('/orders').auth('client',{type:'bearer'}).set('Idempotency-Key','not-a-uuid').send({ variantId:'20000000-0000-4000-8000-000000000001',type:'SALE' }).expect(400);
   assert.equal(snapshots,before,'invalid queries must not access persistence');
 });
 
@@ -335,4 +342,56 @@ test('calendar aggregation bounds the window and binds dates as query parameters
   for (const [start, end] of [['2026-10-01','2026-11-12'], ['2026-10-02','2026-10-01'], ['2026-02-30','2026-03-01']])
     await assert.rejects(() => service.readCalendar({ start, end }), error => error.getStatus() === 400);
   assert.equal(queries, 1);
+});
+
+
+test('indexed conflict intervals agree with stock occupancy for dense, disjoint and overdue reservations', async () => {
+  const { conflictWindows } = await import('../dist/modules/stock/conflict-windows.js');
+  const { occupancy } = await import('../dist/modules/stock/availability.js');
+  const now = today();
+  const day = offset => new Date(now.getTime() + offset * 86400000);
+  for (const capacity of [0, 1, 5, 30]) {
+    const rows = Array.from({ length: 250 }, (_, i) => ({ id: String(i), startDate: day((i * 17) % 60 - 15), endDate: day((i * 17) % 60 - 15 + i % 7), pickedUpAt: i % 11 === 0 ? day(-20) : null }));
+    const windows = conflictWindows(rows, capacity, now);
+    for (const row of rows.filter(row => row.endDate >= now)) {
+      const expected = occupancy(rows, row.startDate, row.endDate, now);
+      assert.equal(windows.overlaps(row.startDate, row.endDate), expected.peak > capacity);
+      assert.deepEqual(windows.overdueIds, expected.overdueIds);
+    }
+  }
+});
+
+
+test('dashboard aggregates global totals and bounds each upcoming-movement query', async () => {
+  const { TransactionsService } = await import('../dist/modules/transactions/transactions.service.js');
+  const now = today();
+  const queryLog = [];
+  const db = {
+    product: { groupBy: async () => [{ active: true, _count: { _all: 4000 } }, { active: false, _count: { _all: 1000 } }] },
+    variant: { aggregate: async () => ({ _sum: { quantity: 20000 } }) },
+    order: { count: async ({ where }) => { assert.deepEqual(where.status.in, ['NEW','UNDER_REVIEW']); return 250; } },
+    transaction: {
+      count: async ({ where }) => { assert.deepEqual(where, { type: 'RENTAL', status: 'CONFIRMED' }); return 900; },
+      aggregate: async ({ where }) => { assert.deepEqual(where.status.in, ['CONFIRMED','COMPLETED']); return { _sum: { priceCents: 1234567 } }; },
+      findMany: async args => {
+        queryLog.push(args);
+        assert.equal(args.take, 5);
+        assert.equal(args.where.type, 'RENTAL');
+        assert.equal(args.where.status, 'CONFIRMED');
+        const field = args.where.startDate ? 'startDate' : 'endDate';
+        assert.equal(args.where[field].gte.getTime(), now.getTime());
+        assert.deepEqual(args.orderBy, [{ [field]: 'asc' }, { id: 'asc' }]);
+        return Array.from({ length: 5 }, (_, index) => ({ id: String(index), [field]: new Date(now.getTime() + index * 86400000), profile: { name: 'Pessoa ' + index } }));
+      },
+    },
+  };
+  const service = new TransactionsService({ $transaction: async (fn, options) => { assert.equal(options.isolationLevel, 'RepeatableRead'); return fn(db); } }, {});
+  service.readConflicts = async () => ({ overdue: ['late'], conflicts: [{ transactionId: 'conflict' }] });
+  const result = await service.readDashboard();
+  assert.deepEqual(result.acervo, { modelos: 5000, ativos: 4000, inativos: 1000, pecas: 20000 });
+  assert.deepEqual(result.operacoes, { locacoesAbertas: 900, valorCentavos: 1234567 });
+  assert.deepEqual(result.pendencias, { pedidos: 250, devolucoes: 1, conflitos: 1 });
+  assert.equal(result.proximos.length, 5);
+  assert.equal(result.proximos[0].data, now.toISOString().slice(0, 10));
+  assert.equal(queryLog.length, 2);
 });

@@ -194,7 +194,7 @@ O comando npm run test:contracts, após npm run build, verifica estes contratos 
 
 GET /transactions/conflicts carrega as locações confirmadas com a quantidade da variante em uma única chamada findMany. As reservas são agrupadas por variante e avaliadas pela mesma função occupancy usada na disponibilidade. O relatório não faz mais uma busca de variante e de reservas para cada operação. Pagamentos e demais dados do produto não são carregados para esse cálculo.
 
-Os testes de contrato verificam equivalência com StockService, limites inclusivos, atrasos, reservas sem retirada, capacidade e variantes independentes. Um cenário controlado com 1.200 reservas verifica uma única chamada de listagem, e falhas de leitura continuam propagadas como erro. Isso não mede quantidade de SQLs internos do Prisma nem latência de banco real. O cálculo ainda percorre as reservas de cada variante por intervalo; medições com volume real e otimizações adicionais de CPU permanecem possíveis.
+Os testes de contrato verificam equivalência com StockService, limites inclusivos, atrasos, reservas sem retirada, capacidade e variantes independentes. Um cenário controlado com 1.200 reservas verifica uma única chamada de listagem, e falhas de leitura continuam propagadas como erro. Isso não mede quantidade de SQLs internos do Prisma nem latência de banco real. O cálculo agora indexa os intervalos sobrecarregados por variante e consulta cada reserva por busca binária. Medições com volume real continuam pendentes.
 
 ### Paginação da gestão — quarta etapa
 
@@ -210,4 +210,15 @@ Novos endpoints preservam os arrays retornados pelas rotas anteriores:
 
 Rotas paginadas retornam items, total, page, pages e limit. Catálogo e pedidos incluem summary global, independente do filtro da página. Page e limit são inteiros positivos; limit vai até 100 (padrão 20), busca até 120 caracteres. Página além do fim é ajustada à última existente; lista vazia retorna página 1 de 1 e total 0. A ordenação por createdAt e id evita ambiguidade de datas iguais. Contagens e itens usam uma transação RepeatableRead. Pedidos/operacões mantêm profileId no escopo do cliente, inclusive contagens.
 
-Implantar estes endpoints antes do frontend paginado. npm run test:contracts verifica rotas, validação e AuthGuard reais, com autenticação e persistência substituídas. Isso não comprova isolamento ou desempenho do PostgreSQL real. Dashboard, agenda e seletores ainda podem consumir listas completas via rotas anteriores; agregações específicas e medições com volume real continuam pendentes.
+Implantar estes endpoints antes do frontend paginado. npm run test:contracts verifica rotas, validação e AuthGuard reais, com autenticação e persistência substituídas. Isso não comprova isolamento ou desempenho do PostgreSQL real. O frontend atualizado usa agregações específicas para dashboard/agenda e páginas para seletores. As rotas anteriores permanecem por compatibilidade; medições com volume real continuam pendentes.
+
+
+## Paginação, resumos e repetição de pedidos (07/10/2026)
+
+- Catálogo público: GET /products/page aceita category, showcase e q; sempre restringe active=true, mesmo com state=inactive. GET /products/:id resolve o detalhe público e GET /products/admin/:id permite o detalhe de gestão.
+- GET /profiles/page é exclusivo da equipe e retorna páginas de id, name e email. GET /orders/page aceita protocol, mantendo o escopo da conta. GET /transactions/page aceita type, status, day e sort=date, além de busca e paginação.
+- GET /transactions/dashboard e GET /transactions/calendar são exclusivos da equipe. O primeiro agrega os totais e limita próximas movimentações a cinco; o segundo agrega contagens por dia no PostgreSQL e rejeita janelas acima de 42 dias. Detalhes da agenda são paginados separadamente.
+- Conflitos usam uma leitura de reservas, agrupamento por variante e índice de intervalos sobrecarregados. A comparação com as regras de disponibilidade continua coberta por testes de contrato.
+- POST /orders aceita Idempotency-Key como UUID v4. A combinação profileId + chave é única; a mesma chave e corpo recuperam o pedido original, enquanto mudanças no corpo recebem 409. O replay acontece antes de revalidar catálogo/datas. Clientes legados sem cabeçalho continuam aceitos, sem a garantia de idempotência.
+
+A migration 20261006000000_order_idempotency apenas adiciona colunas opcionais e índice único. NÃO foi aplicada nesta etapa; banco real, seed e deploy foram expressamente adiados. Antes da futura publicação do backend, aplicar a migration conforme o procedimento existente. Os testes locais usam persistência substituída; concorrência e SQL no PostgreSQL real ainda dependem da homologação adiada.

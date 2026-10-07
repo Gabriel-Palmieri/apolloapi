@@ -1,4 +1,7 @@
-import { CalendarDto, TransactionPageDto } from '../../common/dto/list-page.dto.js';
+import {
+  CalendarDto,
+  TransactionPageDto,
+} from '../../common/dto/list-page.dto.js';
 import { pageWindow } from '../../common/utils/page-window.js';
 import {
   BadRequestException,
@@ -8,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StockService } from '../stock/stock.service.js';
-import { occupancy } from '../stock/availability.js';
+import { conflictWindows } from '../stock/conflict-windows.js';
 import type {
   Prisma,
   Profile,
@@ -41,28 +44,84 @@ export class TransactionsService {
   }
 
   readPage(user: Profile, query: TransactionPageDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const where = { ...this.scope(user), ...(query.day ? { startDate: { lte: parseDay(query.day) }, endDate: { gte: parseDay(query.day) } } : {}), ...(query.type ? { type: query.type } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? {
-        AND: query.q.trim().split(/\s+/).map(term => ({ OR: [
-          { variant: { product: { name: { contains: term, mode: 'insensitive' as const } } } },
-          { profile: { name: { contains: term, mode: 'insensitive' as const } } },
-        ] })),
-      } : {}) };
-      const total = await tx.transaction.count({ where });
-      const meta = pageWindow(total, query);
-      const items = await tx.transaction.findMany({ where, include: { ...include, profile: { select: { name: true } } },
-        orderBy: query.sort === 'date' ? [{ startDate: 'asc' }, { id: 'asc' }] : [{ createdAt: 'desc' }, { id: 'desc' }], skip: (meta.page - 1) * meta.limit, take: meta.limit });
-      const overdue = await tx.transaction.count({ where: { ...this.scope(user), type: 'RENTAL', status: 'CONFIRMED', pickedUpAt: { not: null }, endDate: { lt: today() } } });
-      return { ...meta, items, summary: { overdue } };
-    }, { isolationLevel: 'RepeatableRead' });
+    return this.prisma.$transaction(
+      async (tx) => {
+        const where = {
+          ...this.scope(user),
+          ...(query.day
+            ? {
+                startDate: { lte: parseDay(query.day) },
+                endDate: { gte: parseDay(query.day) },
+              }
+            : {}),
+          ...(query.type ? { type: query.type } : {}),
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.q?.trim()
+            ? {
+                AND: query.q
+                  .trim()
+                  .split(/\s+/)
+                  .map((term) => ({
+                    OR: [
+                      {
+                        variant: {
+                          product: {
+                            name: {
+                              contains: term,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                        },
+                      },
+                      {
+                        profile: {
+                          name: {
+                            contains: term,
+                            mode: 'insensitive' as const,
+                          },
+                        },
+                      },
+                    ],
+                  })),
+              }
+            : {}),
+        };
+        const total = await tx.transaction.count({ where });
+        const meta = pageWindow(total, query);
+        const items = await tx.transaction.findMany({
+          where,
+          include: { ...include, profile: { select: { name: true } } },
+          orderBy:
+            query.sort === 'date'
+              ? [{ startDate: 'asc' }, { id: 'asc' }]
+              : [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: (meta.page - 1) * meta.limit,
+          take: meta.limit,
+        });
+        const overdue = await tx.transaction.count({
+          where: {
+            ...this.scope(user),
+            type: 'RENTAL',
+            status: 'CONFIRMED',
+            pickedUpAt: { not: null },
+            endDate: { lt: today() },
+          },
+        });
+        return { ...meta, items, summary: { overdue } };
+      },
+      { isolationLevel: 'RepeatableRead' },
+    );
   }
   async readCalendar(query: CalendarDto) {
-    const start = parseDay(query.start), end = parseDay(query.end);
+    const start = parseDay(query.start),
+      end = parseDay(query.end);
     if (end < start || end.getTime() - start.getTime() > 41 * 86400000)
       throw new BadRequestException('Consulte até 42 dias por vez.');
     // Aggregate in PostgreSQL: the response always has at most 42 rows,
     // regardless of how many reservations overlap the visible calendar.
-    return this.prisma.$queryRaw<{ day: string; nSaidas: number; nRetornos: number; nAtivos: number }[]>`
+    return this.prisma.$queryRaw<
+      { day: string; nSaidas: number; nRetornos: number; nAtivos: number }[]
+    >`
       SELECT to_char(days.day, 'YYYY-MM-DD') AS day,
         count(t.id) FILTER (WHERE t."startDate" = days.day)::int AS "nSaidas",
         count(t.id) FILTER (WHERE t."endDate" = days.day)::int AS "nRetornos",
@@ -76,25 +135,98 @@ export class TransactionsService {
 
   async readDashboard() {
     const now = today();
-    const result = await this.prisma.$transaction(async tx => {
-      const counts = await tx.product.groupBy({ by: ['active'], _count: { _all: true } });
-      const pieces = await tx.variant.aggregate({ _sum: { quantity: true } });
-      const value = await tx.transaction.aggregate({ where: { status: { in: ['CONFIRMED', 'COMPLETED'] } }, _sum: { priceCents: true } });
-      const rental = { type: 'RENTAL' as const, status: 'CONFIRMED' as const };
-      const open = await tx.transaction.count({ where: rental });
-      const orders = await tx.order.count({ where: { status: { in: ['NEW', 'UNDER_REVIEW'] } } });
-      const outgoing = await tx.transaction.findMany({ where: { ...rental, startDate: { gte: now } }, select: { id: true, startDate: true, profile: { select: { name: true } } }, orderBy: [{ startDate: 'asc' }, { id: 'asc' }], take: 5 });
-      const incoming = await tx.transaction.findMany({ where: { ...rental, endDate: { gte: now } }, select: { id: true, endDate: true, profile: { select: { name: true } } }, orderBy: [{ endDate: 'asc' }, { id: 'asc' }], take: 5 });
-      const active = counts.find(row => row.active)?._count._all ?? 0;
-      const inactive = counts.find(row => !row.active)?._count._all ?? 0;
-      const proximos = [
-        ...outgoing.map(row => ({ transId: row.id, titulo: row.profile.name, data: row.startDate!.toISOString().slice(0, 10), movimento: 'Retirada', tipo: 'avulsa', nPecas: 1 })),
-        ...incoming.map(row => ({ transId: row.id, titulo: row.profile.name, data: row.endDate!.toISOString().slice(0, 10), movimento: 'Devolução', tipo: 'avulsa', nPecas: 1 })),
-      ].sort((a, b) => a.data.localeCompare(b.data) || a.movimento.localeCompare(b.movimento) || a.transId.localeCompare(b.transId)).slice(0, 5);
-      return { acervo: { modelos: active + inactive, ativos: active, inativos: inactive, pecas: pieces._sum.quantity ?? 0 }, operacoes: { locacoesAbertas: open, valorCentavos: value._sum.priceCents ?? 0 }, pedidos: orders, proximos };
-    }, { isolationLevel: 'RepeatableRead' });
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const counts = await tx.product.groupBy({
+          by: ['active'],
+          _count: { _all: true },
+        });
+        const pieces = await tx.variant.aggregate({ _sum: { quantity: true } });
+        const value = await tx.transaction.aggregate({
+          where: { status: { in: ['CONFIRMED', 'COMPLETED'] } },
+          _sum: { priceCents: true },
+        });
+        const rental = {
+          type: 'RENTAL' as const,
+          status: 'CONFIRMED' as const,
+        };
+        const open = await tx.transaction.count({ where: rental });
+        const orders = await tx.order.count({
+          where: { status: { in: ['NEW', 'UNDER_REVIEW'] } },
+        });
+        const outgoing = await tx.transaction.findMany({
+          where: { ...rental, startDate: { gte: now } },
+          select: {
+            id: true,
+            startDate: true,
+            profile: { select: { name: true } },
+          },
+          orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+          take: 5,
+        });
+        const incoming = await tx.transaction.findMany({
+          where: { ...rental, endDate: { gte: now } },
+          select: {
+            id: true,
+            endDate: true,
+            profile: { select: { name: true } },
+          },
+          orderBy: [{ endDate: 'asc' }, { id: 'asc' }],
+          take: 5,
+        });
+        const active = counts.find((row) => row.active)?._count._all ?? 0;
+        const inactive = counts.find((row) => !row.active)?._count._all ?? 0;
+        const proximos = [
+          ...outgoing.map((row) => ({
+            transId: row.id,
+            titulo: row.profile.name,
+            data: row.startDate!.toISOString().slice(0, 10),
+            movimento: 'Retirada',
+            tipo: 'avulsa',
+            nPecas: 1,
+          })),
+          ...incoming.map((row) => ({
+            transId: row.id,
+            titulo: row.profile.name,
+            data: row.endDate!.toISOString().slice(0, 10),
+            movimento: 'Devolução',
+            tipo: 'avulsa',
+            nPecas: 1,
+          })),
+        ]
+          .sort(
+            (a, b) =>
+              a.data.localeCompare(b.data) ||
+              a.movimento.localeCompare(b.movimento) ||
+              a.transId.localeCompare(b.transId),
+          )
+          .slice(0, 5);
+        return {
+          acervo: {
+            modelos: active + inactive,
+            ativos: active,
+            inativos: inactive,
+            pecas: pieces._sum.quantity ?? 0,
+          },
+          operacoes: {
+            locacoesAbertas: open,
+            valorCentavos: value._sum.priceCents ?? 0,
+          },
+          pedidos: orders,
+          proximos,
+        };
+      },
+      { isolationLevel: 'RepeatableRead' },
+    );
     const conflicts = await this.readConflicts();
-    return { ...result, pendencias: { pedidos: result.pedidos, devolucoes: conflicts.overdue.length, conflitos: conflicts.conflicts.length } };
+    return {
+      ...result,
+      pendencias: {
+        pedidos: result.pedidos,
+        devolucoes: conflicts.overdue.length,
+        conflitos: conflicts.conflicts.length,
+      },
+    };
   }
 
   async readOne(id: string, user: Profile) {
@@ -125,21 +257,23 @@ export class TransactionsService {
       if (group) group.push(row);
       else byVariant.set(row.variantId, [row]);
     }
+    const windows = new Map(
+      [...byVariant].map(([id, group]) => [
+        id,
+        conflictWindows(group, group[0].variant.quantity, now),
+      ]),
+    );
     const conflicts: {
       transactionId: string;
       overdueTransactionIds: string[];
     }[] = [];
     for (const row of rows) {
       if (!row.startDate || !row.endDate || row.endDate < now) continue;
-      // Reuse the stock calculation over one snapshot instead of querying
-      // the same variant and reservations again for each transaction.
-      const { peak, overdueIds } = occupancy(
-        byVariant.get(row.variantId)!, row.startDate, row.endDate, now,
-      );
-      if (peak > row.variant.quantity)
+      const window = windows.get(row.variantId)!;
+      if (window.overlaps(row.startDate, row.endDate))
         conflicts.push({
           transactionId: row.id,
-          overdueTransactionIds: overdueIds,
+          overdueTransactionIds: window.overdueIds,
         });
     }
     return {
